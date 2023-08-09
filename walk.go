@@ -32,9 +32,81 @@ var (
 	search        = lipgloss.NewStyle().Background(lipgloss.Color("#499F1C")).Foreground(lipgloss.Color("#FFFFFF"))
 	danger        = lipgloss.NewStyle().Background(lipgloss.Color("#FF0000")).Foreground(lipgloss.Color("#FFFFFF"))
 	fileSeparator = string(filepath.Separator)
+	showIcons     = false
 )
 
-type Model struct {
+var (
+	keyForceQuit = key.NewBinding(key.WithKeys("ctrl+c"))
+	keyQuit      = key.NewBinding(key.WithKeys("esc"))
+	keyOpen      = key.NewBinding(key.WithKeys("enter"))
+	keyBack      = key.NewBinding(key.WithKeys("backspace"))
+	keyUp        = key.NewBinding(key.WithKeys("up"))
+	keyDown      = key.NewBinding(key.WithKeys("down"))
+	keyLeft      = key.NewBinding(key.WithKeys("left"))
+	keyRight     = key.NewBinding(key.WithKeys("right"))
+	keyTop       = key.NewBinding(key.WithKeys("shift+up"))
+	keyBottom    = key.NewBinding(key.WithKeys("shift+down"))
+	keyLeftmost  = key.NewBinding(key.WithKeys("shift+left"))
+	keyRightmost = key.NewBinding(key.WithKeys("shift+right"))
+	keyPageUp    = key.NewBinding(key.WithKeys("pgup"))
+	keyPageDown  = key.NewBinding(key.WithKeys("pgdown"))
+	keyHome      = key.NewBinding(key.WithKeys("home"))
+	keyEnd       = key.NewBinding(key.WithKeys("end"))
+	keyVimUp     = key.NewBinding(key.WithKeys("k"))
+	keyVimDown   = key.NewBinding(key.WithKeys("j"))
+	keyVimLeft   = key.NewBinding(key.WithKeys("h"))
+	keyVimRight  = key.NewBinding(key.WithKeys("l"))
+	keyVimTop    = key.NewBinding(key.WithKeys("g"))
+	keyVimBottom = key.NewBinding(key.WithKeys("G"))
+	keySearch    = key.NewBinding(key.WithKeys("/"))
+	keyPreview   = key.NewBinding(key.WithKeys(" "))
+	keyDelete    = key.NewBinding(key.WithKeys("d"))
+	keyUndo      = key.NewBinding(key.WithKeys("u"))
+)
+
+func main() {
+	startPath, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+
+	for i := 1; i < len(os.Args); i++ {
+		if os.Args[i] == "--help" || os.Args[1] == "-h" {
+			usage()
+		}
+		if os.Args[i] == "--version" || os.Args[1] == "-v" {
+			version()
+		}
+		if os.Args[i] == "--icons" {
+			showIcons = true
+			parseIcons()
+			continue
+		}
+		startPath, err = filepath.Abs(os.Args[1])
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	output := termenv.NewOutput(os.Stderr)
+	lipgloss.SetColorProfile(output.ColorProfile())
+
+	m := &model{
+		path:      startPath,
+		width:     80,
+		height:    60,
+		positions: make(map[string]position),
+	}
+	m.list()
+
+	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
+	if _, err := p.Run(); err != nil {
+		panic(err)
+	}
+	os.Exit(m.exitCode)
+}
+
+type model struct {
 	path              string              // Current dir path we are looking at.
 	files             []fs.DirEntry       // Files we are looking at.
 	kb                *keyMap             // Key bindings.
@@ -54,7 +126,6 @@ type Model struct {
 	previewContent    string              // Content of preview.
 	deleteCurrentFile bool                // Whether to delete current file.
 	toBeDeleted       []toDelete          // Map of files to be deleted.
-	showIcons         bool                // Whether to show icons or not
 }
 
 type position struct {
@@ -323,7 +394,7 @@ func (m *Model) View() string {
 	height := m.listHeight()
 
 	var names [][]string
-	names, m.rows, m.columns = wrap(m.files, width, height, m.showIcons, func(name string, i, j int) {
+	names, m.rows, m.columns = wrap(m.files, width, height, func(name string, i, j int) {
 		if m.findPrevName && m.prevName == name {
 			m.c = i
 			m.r = j
@@ -617,7 +688,7 @@ func (m *Model) preview() {
 
 		width := m.width / 2
 		height := m.height - 1 // Subtract 1 for name bar.
-		names, rows, columns := wrap(files, width, height, m.showIcons, nil)
+		names, rows, columns := wrap(files, width, height, nil)
 
 		output := make([]string, rows)
 		for j := 0; j < rows; j++ {
@@ -648,7 +719,7 @@ func (m *Model) preview() {
 	}
 }
 
-func wrap(files []os.DirEntry, width int, height int, showIcons bool, callback func(name string, i, j int)) ([][]string, int, int) {
+func wrap(files []os.DirEntry, width int, height int, callback func(name string, i, j int)) ([][]string, int, int) {
 	// If it's possible to fit all files in one column on a third of the screen,
 	// just use one column. Otherwise, let's squeeze listing in half of screen.
 	columns := len(files) / (height / 3)
@@ -663,10 +734,6 @@ start:
 	names := make([][]string, columns)
 	n := 0
 
-	var icons iconMap
-	if showIcons {
-		icons = parseIcons()
-	}
 	for i := 0; i < columns; i++ {
 		names[i] = make([]string, rows)
 		// Columns size is going to be of max file name size.
