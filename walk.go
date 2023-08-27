@@ -110,7 +110,7 @@ func main() {
 type model struct {
 	path              string              // Current dir path we are looking at.
 	files             []fs.DirEntry       // Files we are looking at.
-	kb                *keyMap             // Key bindings.
+	err               error               // Error while listing files.
 	c, r              int                 // Selector position in columns and rows.
 	columns, rows     int                 // Displayed amount of rows and columns.
 	width, height     int                 // Terminal size.
@@ -475,7 +475,9 @@ func (m *Model) View() string {
 
 	main := bar + "\n" + Join(output, "\n")
 
-	if len(m.files) == 0 {
+	if m.err != nil {
+		main = bar + "\n" + warning.Render(m.err.Error())
+	} else if len(m.files) == 0 {
 		main = bar + "\n" + warning.Render("No files")
 	}
 
@@ -589,7 +591,10 @@ func (m *Model) list() {
 	// ReadDir already returns files and dirs sorted by filename.
 	files, err := os.ReadDir(m.path)
 	if err != nil {
-		panic(err)
+		m.err = err
+		return
+	} else {
+		m.err = nil
 	}
 
 files:
