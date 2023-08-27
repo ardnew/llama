@@ -192,7 +192,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.updateOffset()
 				m.saveCursorPosition()
-				m.preview()
 				// Save search id to clear only current search after delay.
 				// User may have already started typing next search.
 				searchId := m.searchId
@@ -252,7 +251,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.findPrevName = true
 			}
 			m.list()
-			m.preview()
 			return m, nil
 
 		case key.Matches(msg, m.kb.up):
@@ -323,7 +321,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.findPrevName = true
 
 			if m.previewMode {
-				m.preview()
 				return m, tea.EnterAltScreen
 			}
 			m.previewContent = ""
@@ -360,7 +357,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.deleteCurrentFile = false
 		m.updateOffset()
 		m.saveCursorPosition()
-		m.preview()
 
 	case clearSearchMsg:
 		if m.searchId == int(msg) {
@@ -408,6 +404,10 @@ func (m *Model) View() string {
 		m.updateOffset()
 		m.saveCursorPosition()
 	}
+
+	// After we have updated offset and saved cursor position, we can
+	// preview currently selected file.
+	m.preview()
 
 	// Get output rows width before coloring.
 	outputWidth := len(path.Base(m.path)) // Use current dir name as default.
