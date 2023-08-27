@@ -206,7 +206,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.kb.forceQuit):
 			_, _ = fmt.Fprintln(os.Stderr) // Keep last item visible after prompt.
 			m.exitCode = 2
-			m.performPendingDeletions()
+			m.dontDoPendingDeletions()
 			return m, tea.Quit
 
 		case key.Matches(msg, keyQuit, keyQuitQ):
@@ -803,7 +803,13 @@ start:
 	return names, rows, columns
 }
 
-func (m *Model) performPendingDeletions() {
+func (m *model) dontDoPendingDeletions() {
+	for _, toDelete := range m.toBeDeleted {
+		fmt.Fprintf(os.Stderr, "Was not deleted: %v\n", toDelete.path)
+	}
+}
+
+func (m *model) performPendingDeletions() {
 	for _, toDelete := range m.toBeDeleted {
 		_ = os.RemoveAll(toDelete.path)
 	}
