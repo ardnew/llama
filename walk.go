@@ -677,18 +677,21 @@ func (m *Model) preview() {
 	if !ok {
 		return
 	}
+	ext := filepath.Ext(filePath)
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
 		return
 	}
+
+	width := m.width / 2
+	height := m.height - 1 // Subtract 1 for name bar.
+
 	if fileInfo.IsDir() {
 		files, err := os.ReadDir(filePath)
 		if err != nil {
 			m.previewContent = err.Error()
 		}
 
-		width := m.width / 2
-		height := m.height - 1 // Subtract 1 for name bar.
 		names, rows, columns := wrap(files, width, height, nil)
 
 		output := make([]string, rows)
@@ -703,6 +706,15 @@ func (m *Model) preview() {
 			output = output[0:height]
 		}
 		m.previewContent = Join(output, "\n")
+		return
+	}
+	if ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif" {
+		img, err := drawImage(filePath, width, height)
+		if err != nil {
+			m.previewContent = warning.Render("No preview available")
+			return
+		}
+		m.previewContent = img
 		return
 	}
 
