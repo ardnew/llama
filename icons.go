@@ -1,4 +1,4 @@
-package main
+package walk
 
 import (
 	"bufio"
@@ -50,9 +50,9 @@ func (im iconMap) getIcon(f os.FileInfo) string {
 	}
 	var key string
 	switch {
-	case f.IsDir() && f.Mode()&os.ModeSticky != 0 && f.Mode()&0002 != 0:
+	case f.IsDir() && f.Mode()&os.ModeSticky != 0 && f.Mode()&0o002 != 0:
 		key = "tw"
-	case f.IsDir() && f.Mode()&0002 != 0:
+	case f.IsDir() && f.Mode()&0o002 != 0:
 		key = "ow"
 	case f.IsDir() && f.Mode()&os.ModeSticky != 0:
 		key = "st"
@@ -70,6 +70,8 @@ func (im iconMap) getIcon(f os.FileInfo) string {
 		key = "su"
 	case f.Mode()&os.ModeSetgid != 0:
 		key = "sg"
+	case f.Mode()&0o111 != 0:
+		key = "ex"
 	}
 	if val, ok := im[key]; ok {
 		return val
