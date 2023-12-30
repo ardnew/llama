@@ -1,4 +1,4 @@
-package main
+package walk
 
 import (
 	"fmt"
@@ -18,7 +18,6 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
 	"github.com/sahilm/fuzzy"
 )
 
@@ -34,84 +33,10 @@ var (
 	fileSeparator = string(filepath.Separator)
 )
 
-var (
-	keyForceQuit = key.NewBinding(key.WithKeys("ctrl+c"))
-	keyQuit      = key.NewBinding(key.WithKeys("esc"))
-	keyOpen      = key.NewBinding(key.WithKeys("enter"))
-	keyBack      = key.NewBinding(key.WithKeys("backspace"))
-	keyUp        = key.NewBinding(key.WithKeys("up"))
-	keyDown      = key.NewBinding(key.WithKeys("down"))
-	keyLeft      = key.NewBinding(key.WithKeys("left"))
-	keyRight     = key.NewBinding(key.WithKeys("right"))
-	keyTop       = key.NewBinding(key.WithKeys("shift+up"))
-	keyBottom    = key.NewBinding(key.WithKeys("shift+down"))
-	keyLeftmost  = key.NewBinding(key.WithKeys("shift+left"))
-	keyRightmost = key.NewBinding(key.WithKeys("shift+right"))
-	keyPageUp    = key.NewBinding(key.WithKeys("pgup"))
-	keyPageDown  = key.NewBinding(key.WithKeys("pgdown"))
-	keyHome      = key.NewBinding(key.WithKeys("home"))
-	keyEnd       = key.NewBinding(key.WithKeys("end"))
-	keyVimUp     = key.NewBinding(key.WithKeys("k"))
-	keyVimDown   = key.NewBinding(key.WithKeys("j"))
-	keyVimLeft   = key.NewBinding(key.WithKeys("h"))
-	keyVimRight  = key.NewBinding(key.WithKeys("l"))
-	keyVimTop    = key.NewBinding(key.WithKeys("g"))
-	keyVimBottom = key.NewBinding(key.WithKeys("G"))
-	keySearch    = key.NewBinding(key.WithKeys("/"))
-	keyPreview   = key.NewBinding(key.WithKeys(" "))
-	keyDelete    = key.NewBinding(key.WithKeys("d"))
-	keyUndo      = key.NewBinding(key.WithKeys("u"))
-)
-
-func main() {
-	startPath, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-
-	showIcons := false
-	for i := 1; i < len(os.Args); i++ {
-		if os.Args[i] == "--help" || os.Args[1] == "-h" {
-			usage()
-		}
-
-		if os.Args[i] == "--version" || os.Args[1] == "-v" {
-			version()
-		}
-
-		if os.Args[i] == "--icons" {
-			showIcons = true
-			continue
-		}
-
-		startPath, err = filepath.Abs(os.Args[1])
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	output := termenv.NewOutput(os.Stderr)
-	lipgloss.SetColorProfile(output.ColorProfile())
-
-	m := &model{
-		path:      startPath,
-		width:     80,
-		height:    60,
-		positions: make(map[string]position),
-		showIcons: showIcons,
-	}
-	m.list()
-
-	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
-	if _, err := p.Run(); err != nil {
-		panic(err)
-	}
-	os.Exit(m.exitCode)
-}
-
-type model struct {
+type Model struct {
 	path              string              // Current dir path we are looking at.
 	files             []fs.DirEntry       // Files we are looking at.
+	kb                *keyMap             // Key bindings.
 	c, r              int                 // Selector position in columns and rows.
 	columns, rows     int                 // Displayed amount of rows and columns.
 	width, height     int                 // Terminal size.
@@ -146,11 +71,12 @@ type (
 	toBeDeletedMsg int
 )
 
-func (m *model) Init() tea.Cmd {
+func (m *Model) Init() tea.Cmd {
+	m.kb = newKeyMap()
 	return nil
 }
 
-func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -170,10 +96,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if m.searchMode {
-			if key.Matches(msg, keySearch) {
+			if key.Matches(msg, m.kb.search) {
 				m.searchMode = false
 				return m, nil
-			} else if key.Matches(msg, keyBack) {
+			} else if key.Matches(msg, m.kb.back) {
 				if len(m.search) > 0 {
 					m.search = m.search[:len(m.search)-1]
 					return m, nil
@@ -204,20 +130,20 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch {
-		case key.Matches(msg, keyForceQuit):
+		case key.Matches(msg, m.kb.forceQuit):
 			_, _ = fmt.Fprintln(os.Stderr) // Keep last item visible after prompt.
 			m.exitCode = 2
 			m.performPendingDeletions()
 			return m, tea.Quit
 
-		case key.Matches(msg, keyQuit):
+		case key.Matches(msg, m.kb.quit):
 			_, _ = fmt.Fprintln(os.Stderr) // Keep last item visible after prompt.
 			fmt.Println(m.path)            // Write to cd.
 			m.exitCode = 0
 			m.performPendingDeletions()
 			return m, tea.Quit
 
-		case key.Matches(msg, keyOpen):
+		case key.Matches(msg, m.kb.open):
 			m.searchMode = false
 			filePath, ok := m.filePath()
 			if !ok {
@@ -241,7 +167,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.openEditor()
 			}
 
-		case key.Matches(msg, keyBack):
+		case key.Matches(msg, m.kb.back):
 			m.searchMode = false
 			m.prevName = filepath.Base(m.path)
 			m.path = filepath.Join(m.path, "..")
@@ -256,62 +182,62 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.preview()
 			return m, nil
 
-		case key.Matches(msg, keyUp):
+		case key.Matches(msg, m.kb.up):
 			m.moveUp()
 
-		case key.Matches(msg, keyTop, keyPageUp, keyVimTop):
+		case key.Matches(msg, m.kb.top, m.kb.pageUp, m.kb.vimTop):
 			m.moveTop()
 
-		case key.Matches(msg, keyBottom, keyPageDown, keyVimBottom):
+		case key.Matches(msg, m.kb.bottom, m.kb.pageDown, m.kb.vimBottom):
 			m.moveBottom()
 
-		case key.Matches(msg, keyLeftmost):
+		case key.Matches(msg, m.kb.leftmost):
 			m.moveLeftmost()
 
-		case key.Matches(msg, keyRightmost):
+		case key.Matches(msg, m.kb.rightmost):
 			m.moveRightmost()
 
-		case key.Matches(msg, keyHome):
+		case key.Matches(msg, m.kb.home):
 			m.moveStart()
 
-		case key.Matches(msg, keyEnd):
+		case key.Matches(msg, m.kb.end):
 			m.moveEnd()
 
-		case key.Matches(msg, keyVimUp):
+		case key.Matches(msg, m.kb.vimUp):
 			if !m.searchMode {
 				m.moveUp()
 			}
 
-		case key.Matches(msg, keyDown):
+		case key.Matches(msg, m.kb.down):
 			m.moveDown()
 
-		case key.Matches(msg, keyVimDown):
+		case key.Matches(msg, m.kb.vimDown):
 			if !m.searchMode {
 				m.moveDown()
 			}
 
-		case key.Matches(msg, keyLeft):
+		case key.Matches(msg, m.kb.left):
 			m.moveLeft()
 
-		case key.Matches(msg, keyVimLeft):
+		case key.Matches(msg, m.kb.vimLeft):
 			if !m.searchMode {
 				m.moveLeft()
 			}
 
-		case key.Matches(msg, keyRight):
+		case key.Matches(msg, m.kb.right):
 			m.moveRight()
 
-		case key.Matches(msg, keyVimRight):
+		case key.Matches(msg, m.kb.vimRight):
 			if !m.searchMode {
 				m.moveRight()
 			}
 
-		case key.Matches(msg, keySearch):
+		case key.Matches(msg, m.kb.search):
 			m.searchMode = true
 			m.searchId++
 			m.search = ""
 
-		case key.Matches(msg, keyPreview):
+		case key.Matches(msg, m.kb.preview):
 			m.previewMode = !m.previewMode
 			// Reset position history as c&r changes.
 			m.positions = make(map[string]position)
@@ -326,12 +252,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.previewMode {
 				m.preview()
 				return m, tea.EnterAltScreen
-			} else {
-				m.previewContent = ""
-				return m, tea.ExitAltScreen
 			}
+			m.previewContent = ""
+			return m, tea.ExitAltScreen
 
-		case key.Matches(msg, keyDelete):
+		case key.Matches(msg, m.kb.delete):
 			filePathToDelete, ok := m.filePath()
 			if ok {
 				if m.deleteCurrentFile {
@@ -345,20 +270,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, tea.Tick(time.Second, func(time.Time) tea.Msg {
 						return toBeDeletedMsg(0)
 					})
-				} else {
-					m.deleteCurrentFile = true
 				}
+				m.deleteCurrentFile = true
 			}
 			return m, nil
 
-		case key.Matches(msg, keyUndo):
+		case key.Matches(msg, m.kb.undo):
 			if len(m.toBeDeleted) > 0 {
 				m.toBeDeleted = m.toBeDeleted[:len(m.toBeDeleted)-1]
 				m.list()
 				m.previewContent = ""
 				return m, nil
 			}
-
 		} // End of switch statement for key presses.
 
 		m.deleteCurrentFile = false
@@ -391,7 +314,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *model) View() string {
+func (m *Model) View() string {
 	width := m.width
 	if m.previewMode {
 		width = m.width / 2
@@ -562,7 +485,7 @@ start:
 	}
 }
 
-func (m *model) moveUp() {
+func (m *Model) moveUp() {
 	m.r--
 	if m.r < 0 {
 		m.r = m.rows - 1
@@ -574,7 +497,7 @@ func (m *model) moveUp() {
 	}
 }
 
-func (m *model) moveDown() {
+func (m *Model) moveDown() {
 	m.r++
 	if m.r >= m.rows {
 		m.r = 0
@@ -589,7 +512,7 @@ func (m *model) moveDown() {
 	}
 }
 
-func (m *model) moveLeft() {
+func (m *Model) moveLeft() {
 	m.c--
 	if m.c < 0 {
 		m.c = m.columns - 1
@@ -600,7 +523,7 @@ func (m *model) moveLeft() {
 	}
 }
 
-func (m *model) moveRight() {
+func (m *Model) moveRight() {
 	m.c++
 	if m.c >= m.columns {
 		m.c = 0
@@ -611,22 +534,22 @@ func (m *model) moveRight() {
 	}
 }
 
-func (m *model) moveTop() {
+func (m *Model) moveTop() {
 	m.r = 0
 }
 
-func (m *model) moveBottom() {
+func (m *Model) moveBottom() {
 	m.r = m.rows - 1
 	if m.c == m.columns-1 && (m.columns-1)*m.rows+m.r >= len(m.files) {
 		m.r = m.rows - 1 - (m.columns*m.rows - len(m.files))
 	}
 }
 
-func (m *model) moveLeftmost() {
+func (m *Model) moveLeftmost() {
 	m.c = 0
 }
 
-func (m *model) moveRightmost() {
+func (m *Model) moveRightmost() {
 	m.c = m.columns - 1
 	if m.c == m.columns-1 && (m.columns-1)*m.rows+m.r >= len(m.files) {
 		m.r = m.rows - 1 - (m.columns*m.rows - len(m.files))
@@ -634,17 +557,17 @@ func (m *model) moveRightmost() {
 	}
 }
 
-func (m *model) moveStart() {
+func (m *Model) moveStart() {
 	m.moveLeftmost()
 	m.moveTop()
 }
 
-func (m *model) moveEnd() {
+func (m *Model) moveEnd() {
 	m.moveRightmost()
 	m.moveBottom()
 }
 
-func (m *model) list() {
+func (m *Model) list() {
 	var err error
 	m.files = nil
 
@@ -665,7 +588,7 @@ files:
 	}
 }
 
-func (m *model) listHeight() int {
+func (m *Model) listHeight() int {
 	h := m.height - 1 // Subtract 1 for location bar.
 	if len(m.toBeDeleted) > 0 {
 		h-- // Subtract 1 for delete bar.
@@ -673,7 +596,7 @@ func (m *model) listHeight() int {
 	return h
 }
 
-func (m *model) updateOffset() {
+func (m *Model) updateOffset() {
 	height := m.listHeight()
 	// Scrolling down.
 	if m.r >= m.offset+height {
@@ -689,7 +612,7 @@ func (m *model) updateOffset() {
 	}
 }
 
-func (m *model) saveCursorPosition() {
+func (m *Model) saveCursorPosition() {
 	m.positions[m.path] = position{
 		c:      m.c,
 		r:      m.r,
@@ -697,7 +620,7 @@ func (m *model) saveCursorPosition() {
 	}
 }
 
-func (m *model) fileName() (string, bool) {
+func (m *Model) fileName() (string, bool) {
 	i := m.c*m.rows + m.r
 	if i >= len(m.files) || i < 0 {
 		return "", false
@@ -705,7 +628,7 @@ func (m *model) fileName() (string, bool) {
 	return m.files[i].Name(), true
 }
 
-func (m *model) filePath() (string, bool) {
+func (m *Model) filePath() (string, bool) {
 	fileName, ok := m.fileName()
 	if !ok {
 		return fileName, false
@@ -713,7 +636,7 @@ func (m *model) filePath() (string, bool) {
 	return path.Join(m.path, fileName), true
 }
 
-func (m *model) openEditor() tea.Cmd {
+func (m *Model) openEditor() tea.Cmd {
 	filePath, ok := m.filePath()
 	if !ok {
 		return nil
@@ -731,7 +654,7 @@ func (m *model) openEditor() tea.Cmd {
 	})
 }
 
-func (m *model) preview() {
+func (m *Model) preview() {
 	if !m.previewMode {
 		return
 	}
@@ -782,7 +705,7 @@ func readContent(file string) ([]byte, error) {
 	return buf, nil
 }
 
-func (m *model) performPendingDeletions() {
+func (m *Model) performPendingDeletions() {
 	for _, toDelete := range m.toBeDeleted {
 		_ = os.RemoveAll(toDelete.path)
 	}

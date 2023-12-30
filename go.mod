@@ -1,4 +1,4 @@
-module github.com/antonmedv/llama
+module github.com/ardnew/walk
 
 go 1.17
 
