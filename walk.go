@@ -36,83 +36,11 @@ var (
 	showIcons     = false
 )
 
-var (
-	keyForceQuit = key.NewBinding(key.WithKeys("ctrl+c"))
-	keyQuit      = key.NewBinding(key.WithKeys("esc"))
-	keyQuitQ     = key.NewBinding(key.WithKeys("q"))
-	keyOpen      = key.NewBinding(key.WithKeys("enter"))
-	keyBack      = key.NewBinding(key.WithKeys("backspace"))
-	keyUp        = key.NewBinding(key.WithKeys("up"))
-	keyDown      = key.NewBinding(key.WithKeys("down"))
-	keyLeft      = key.NewBinding(key.WithKeys("left"))
-	keyRight     = key.NewBinding(key.WithKeys("right"))
-	keyTop       = key.NewBinding(key.WithKeys("shift+up"))
-	keyBottom    = key.NewBinding(key.WithKeys("shift+down"))
-	keyLeftmost  = key.NewBinding(key.WithKeys("shift+left"))
-	keyRightmost = key.NewBinding(key.WithKeys("shift+right"))
-	keyPageUp    = key.NewBinding(key.WithKeys("pgup"))
-	keyPageDown  = key.NewBinding(key.WithKeys("pgdown"))
-	keyHome      = key.NewBinding(key.WithKeys("home"))
-	keyEnd       = key.NewBinding(key.WithKeys("end"))
-	keyVimUp     = key.NewBinding(key.WithKeys("k"))
-	keyVimDown   = key.NewBinding(key.WithKeys("j"))
-	keyVimLeft   = key.NewBinding(key.WithKeys("h"))
-	keyVimRight  = key.NewBinding(key.WithKeys("l"))
-	keyVimTop    = key.NewBinding(key.WithKeys("g"))
-	keyVimBottom = key.NewBinding(key.WithKeys("G"))
-	keySearch    = key.NewBinding(key.WithKeys("/"))
-	keyPreview   = key.NewBinding(key.WithKeys(" "))
-	keyDelete    = key.NewBinding(key.WithKeys("d"))
-	keyUndo      = key.NewBinding(key.WithKeys("u"))
-	keyYank      = key.NewBinding(key.WithKeys("y"))
-)
-
-func main() {
-	startPath, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-
-	for i := 1; i < len(os.Args); i++ {
-		if os.Args[i] == "--help" || os.Args[1] == "-h" {
-			usage()
-		}
-		if os.Args[i] == "--version" || os.Args[1] == "-v" {
-			version()
-		}
-		if os.Args[i] == "--icons" {
-			showIcons = true
-			parseIcons()
-			continue
-		}
-		startPath, err = filepath.Abs(os.Args[1])
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	output := termenv.NewOutput(os.Stderr)
-	lipgloss.SetColorProfile(output.ColorProfile())
-
-	m := &model{
-		path:      startPath,
-		width:     80,
-		height:    60,
-		positions: make(map[string]position),
-	}
-	m.list()
-
-	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
-	if _, err := p.Run(); err != nil {
-		panic(err)
-	}
-	os.Exit(m.exitCode)
-}
-
-type model struct {
+type Model struct {
 	path              string              // Current dir path we are looking at.
 	files             []fs.DirEntry       // Files we are looking at.
 	err               error               // Error while listing files.
+	kb                *keyMap             // Key bindings.
 	c, r              int                 // Selector position in columns and rows.
 	columns, rows     int                 // Displayed amount of rows and columns.
 	width, height     int                 // Terminal size.
@@ -211,7 +139,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dontDoPendingDeletions()
 			return m, tea.Quit
 
-		case key.Matches(msg, keyQuit, keyQuitQ):
+		case key.Matches(msg, m.kb.quit, keyQuitQ):
 			_, _ = fmt.Fprintln(os.Stderr) // Keep last item visible after prompt.
 			fmt.Println(m.path)            // Write to cd.
 			m.exitCode = 0
@@ -355,7 +283,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.previewContent = ""
 				return m, nil
 			}
-
 		case key.Matches(msg, keyYank):
 			// copy path to clipboard
 			clipboard.WriteAll(m.path)
@@ -858,7 +785,7 @@ func (m *model) dontDoPendingDeletions() {
 	}
 }
 
-func (m *model) performPendingDeletions() {
+func (m *Model) performPendingDeletions() {
 	for _, toDelete := range m.toBeDeleted {
 		_ = os.RemoveAll(toDelete.path)
 	}

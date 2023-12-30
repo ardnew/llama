@@ -5,6 +5,7 @@ import "github.com/charmbracelet/bubbles/key"
 type keyMap struct {
 	forceQuit key.Binding
 	quit      key.Binding
+	quitQ     key.Binding
 	open      key.Binding
 	back      key.Binding
 	up        key.Binding
@@ -29,6 +30,7 @@ type keyMap struct {
 	preview   key.Binding
 	delete    key.Binding
 	undo      key.Binding
+	yank      key.Binding
 }
 
 func newKeyMap() *keyMap { return new(keyMap).init() }
@@ -36,6 +38,7 @@ func newKeyMap() *keyMap { return new(keyMap).init() }
 func (k *keyMap) init() *keyMap {
 	k.forceQuit = key.NewBinding(key.WithKeys("ctrl+c"))
 	k.quit = key.NewBinding(key.WithKeys("esc"))
+	k.quitQ = key.NewBinding(key.WithKeys("q"))
 	k.open = key.NewBinding(key.WithKeys("enter"))
 	k.back = key.NewBinding(key.WithKeys("backspace"))
 	k.up = key.NewBinding(key.WithKeys("up"))
@@ -60,5 +63,6 @@ func (k *keyMap) init() *keyMap {
 	k.preview = key.NewBinding(key.WithKeys(" "))
 	k.delete = key.NewBinding(key.WithKeys("d"))
 	k.undo = key.NewBinding(key.WithKeys("u"))
+	k.yank = key.NewBinding(key.WithKeys("y"))
 	return k
 }
