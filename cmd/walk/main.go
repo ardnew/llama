@@ -4,29 +4,31 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/ardnew/walk"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 )
 
 func main() {
+	options := []walk.Option{}
+
 	startPath, err := os.Getwd()
 	if err != nil {
 		panic(err)
 	}
 
-	showIcons := false
 	for i := 1; i < len(os.Args); i++ {
 		if os.Args[i] == "--help" || os.Args[1] == "-h" {
-			usage()
+			walk.Usage()
 		}
 
 		if os.Args[i] == "--version" || os.Args[1] == "-v" {
-			version()
+			walk.Version()
 		}
 
 		if os.Args[i] == "--icons" {
-			showIcons = true
+			options = append(options, walk.Icons())
 			continue
 		}
 
@@ -36,21 +38,19 @@ func main() {
 		}
 	}
 
+	options = append(options,
+		walk.Path(startPath),
+		walk.Size(80, 60),
+	)
+
 	output := termenv.NewOutput(os.Stderr)
 	lipgloss.SetColorProfile(output.ColorProfile())
 
-	m := &model{
-		path:      startPath,
-		width:     80,
-		height:    60,
-		positions: make(map[string]position),
-		showIcons: showIcons,
-	}
-	m.list()
+	w := walk.New(options...)
+	p := tea.NewProgram(w, tea.WithOutput(os.Stderr))
 
-	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
 	if _, err := p.Run(); err != nil {
 		panic(err)
 	}
-	os.Exit(m.exitCode)
+	w.Exit()
 }

@@ -89,7 +89,7 @@ func (im iconMap) getIcon(f os.FileInfo) string {
 	if val, ok := im["*"+strings.ToLower(ext)]; ok {
 		return val
 	}
-	if f.Mode()&0111 != 0 {
+	if f.Mode()&0o111 != 0 {
 		if val, ok := im["ex"]; ok {
 			return val
 		}

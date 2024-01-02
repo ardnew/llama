@@ -21,7 +21,7 @@ import (
 	"github.com/sahilm/fuzzy"
 )
 
-var Version = "v1.7.0"
+var version = "v1.7.0"
 
 const separator = "    " // Separator between columns.
 
@@ -75,8 +75,65 @@ type (
 	toBeDeletedMsg int
 )
 
+type Option func(*Model) *Model
+
+func Path(path string) Option {
+	return func(m *Model) *Model { return m.WithPath(path) }
+}
+
+func (m *Model) WithPath(path string) *Model {
+	m.path = path
+	return m
+}
+
+func Size(width, height int) Option {
+	return func(m *Model) *Model { return m.WithSize(width, height) }
+}
+
+func (m *Model) WithSize(width, height int) *Model {
+	m.width = width
+	m.height = height
+	return m
+}
+
+func Icons() Option {
+	return func(m *Model) *Model { return m.WithIcons() }
+}
+
+func (m *Model) WithIcons() *Model {
+	showIcons = true
+	parseIcons()
+	return m
+}
+
+func New(options ...Option) *Model {
+	m := &Model{
+		kb:        newKeyMap(),
+		positions: make(map[string]position),
+	}
+	return m.With(options...)
+}
+
+func (m *Model) With(options ...Option) *Model {
+	for _, option := range options {
+		m = option(m)
+	}
+	return m
+}
+
+func Kill(status int)  { os.Exit(status) }
+func (m *Model) Exit() { Kill(m.exitCode) }
+
 func (m *Model) Init() tea.Cmd {
-	m.kb = newKeyMap()
+	if m.path == "" {
+		var err error
+		m.path, err = os.Getwd()
+		if err != nil {
+			_, _ = fmt.Fprintln(os.Stderr,
+				danger.Render("error: failed to get working directory"))
+		}
+	}
+	m.list()
 	return nil
 }
 
@@ -139,7 +196,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dontDoPendingDeletions()
 			return m, tea.Quit
 
-		case key.Matches(msg, m.kb.quit, keyQuitQ):
+		case key.Matches(msg, m.kb.quit, m.kb.quitQ):
 			_, _ = fmt.Fprintln(os.Stderr) // Keep last item visible after prompt.
 			fmt.Println(m.path)            // Write to cd.
 			m.exitCode = 0
@@ -283,7 +340,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.previewContent = ""
 				return m, nil
 			}
-		case key.Matches(msg, keyYank):
+		case key.Matches(msg, m.kb.yank):
 			// copy path to clipboard
 			clipboard.WriteAll(m.path)
 			m.yankSuccess = true
@@ -421,7 +478,7 @@ func (m *Model) View() string {
 	// Delete bar.
 	if len(m.toBeDeleted) > 0 {
 		toDelete := m.toBeDeleted[len(m.toBeDeleted)-1]
-		timeLeft := int(toDelete.at.Sub(time.Now()).Seconds())
+		timeLeft := int(time.Until(toDelete.at).Seconds())
 		deleteBar := fmt.Sprintf("%v deleted. (u)ndo %v", path.Base(toDelete.path), timeLeft)
 		main += "\n" + danger.Render(deleteBar)
 	}
@@ -440,9 +497,8 @@ func (m *Model) View() string {
 				MaxHeight(m.height).
 				Render(previewPane),
 		)
-	} else {
-		return main
 	}
+	return main
 }
 
 func (m *Model) moveUp() {
@@ -536,9 +592,8 @@ func (m *Model) list() {
 	if err != nil {
 		m.err = err
 		return
-	} else {
-		m.err = nil
 	}
+	m.err = nil
 
 files:
 	for _, file := range files {
@@ -779,7 +834,7 @@ start:
 	return names, rows, columns
 }
 
-func (m *model) dontDoPendingDeletions() {
+func (m *Model) dontDoPendingDeletions() {
 	for _, toDelete := range m.toBeDeleted {
 		fmt.Fprintf(os.Stderr, "Was not deleted: %v\n", toDelete.path)
 	}
@@ -810,7 +865,7 @@ func lookup(names []string, val string) string {
 	return val
 }
 
-func usage() {
+func Usage() {
 	_, _ = fmt.Fprintf(os.Stderr, "\n  "+cursor.Render(" walk ")+"\n\n  Usage: walk [path]\n\n")
 	w := tabwriter.NewWriter(os.Stderr, 0, 8, 2, ' ', 0)
 	put := func(s string) {
@@ -832,7 +887,7 @@ func usage() {
 	os.Exit(1)
 }
 
-func version() {
+func Version() {
 	fmt.Printf("\n  %s %s\n\n", cursor.Render(" walk "), Version)
 	os.Exit(0)
 }
