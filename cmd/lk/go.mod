@@ -1,4 +1,4 @@
-module github.com/ardnew/walk/cmd/walk
+module github.com/ardnew/walk/cmd/lk
 
 go 1.21.4
 
