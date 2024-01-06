@@ -1,4 +1,4 @@
-module github.com/ardnew/walk
+module github.com/ardnew/walk/v2
 
 go 1.17
 
