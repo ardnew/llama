@@ -20,7 +20,7 @@ import (
 	"github.com/sahilm/fuzzy"
 )
 
-var version = "v2.1.0"
+var version = "v2.2.0"
 
 func Version() string { return version }
 
@@ -35,22 +35,26 @@ type Styles struct {
 	Warning, Preview, Cursor, Bar, Search, Danger lipgloss.Style
 }
 
-func DefaultStyle() *Styles {
-	return &Styles{
-		Warning: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).PaddingLeft(1).PaddingRight(1),
-		Preview: lipgloss.NewStyle().PaddingLeft(2),
-		Cursor:  lipgloss.NewStyle().Background(lipgloss.Color("#825DF2")).Foreground(lipgloss.Color("#FFFFFF")),
-		Bar:     lipgloss.NewStyle().Background(lipgloss.Color("#5C5C5C")).Foreground(lipgloss.Color("#FFFFFF")),
-		Search:  lipgloss.NewStyle().Background(lipgloss.Color("#499F1C")).Foreground(lipgloss.Color("#FFFFFF")),
-		Danger:  lipgloss.NewStyle().Background(lipgloss.Color("#FF0000")).Foreground(lipgloss.Color("#FFFFFF")),
+func NewStyles() *Styles { return new(Styles).Default() }
+
+func (s *Styles) Default() *Styles {
+	if s == nil {
+		s = new(Styles)
 	}
+	s.Warning = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).PaddingLeft(1).PaddingRight(1)
+	s.Preview = lipgloss.NewStyle().PaddingLeft(2)
+	s.Cursor =  lipgloss.NewStyle().Background(lipgloss.Color("#825DF2")).Foreground(lipgloss.Color("#FFFFFF"))
+	s.Bar =     lipgloss.NewStyle().Background(lipgloss.Color("#5C5C5C")).Foreground(lipgloss.Color("#FFFFFF"))
+	s.Search =  lipgloss.NewStyle().Background(lipgloss.Color("#499F1C")).Foreground(lipgloss.Color("#FFFFFF"))
+	s.Danger =  lipgloss.NewStyle().Background(lipgloss.Color("#FF0000")).Foreground(lipgloss.Color("#FFFFFF"))
+	return s
 }
 
 type Model struct {
 	path              string              // Current dir path we are looking at.
 	files             []fs.DirEntry       // Files we are looking at.
 	err               error               // Error while listing files.
-	kb                *keyMap             // Key bindings.
+	kb                *KeyMap             // Key bindings.
 	st                *Styles             // Rendering attributes.
 	cmdline           []string            // Command line to open files.
 	c, r              int                 // Selector position in columns and rows.
@@ -136,14 +140,23 @@ func (m *Model) WithStyle(styles *Styles) *Model {
 	return m
 }
 
-func New(options ...Option) *Model {
-	m := (&Model{
-		kb:        newKeyMap(),
-		positions: make(map[string]position),
-	}).With(options...)
+func Keys(keys *KeyMap) Option {
+	return func(m *Model) *Model { return m.WithKeys(keys) }
+}
 
+func (m *Model) WithKeys(keys *KeyMap) *Model {
+	m.kb = keys
+	return m
+}
+
+func New(options ...Option) *Model {
+	m := (&Model{ positions: make(map[string]position) }).With(options...)
+
+	if m.kb == nil {
+		m.kb = m.kb.Default()
+	}
 	if m.st == nil {
-		m.st = DefaultStyle()
+		m.st = m.st.Default()
 	}
 	return m
 }
@@ -191,10 +204,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if m.searchMode {
-			if key.Matches(msg, m.kb.search) {
+			if key.Matches(msg, m.kb.Search) {
 				m.searchMode = false
 				return m, nil
-			} else if key.Matches(msg, m.kb.back) {
+			} else if key.Matches(msg, m.kb.Back) {
 				if len(m.search) > 0 {
 					m.search = m.search[:len(m.search)-1]
 					return m, nil
@@ -224,20 +237,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch {
-		case key.Matches(msg, m.kb.forceQuit):
+		case key.Matches(msg, m.kb.ForceQuit):
 			_, _ = fmt.Fprintln(os.Stderr) // Keep last item visible after prompt.
 			m.exitCode = 2
 			m.dontDoPendingDeletions()
 			return m, tea.Quit
 
-		case key.Matches(msg, m.kb.quit, m.kb.quitQ):
+		case key.Matches(msg, m.kb.Quit, m.kb.QuitQ):
 			_, _ = fmt.Fprintln(os.Stderr) // Keep last item visible after prompt.
 			fmt.Println(m.path)            // Write to cd.
 			m.exitCode = 0
 			m.performPendingDeletions()
 			return m, tea.Quit
 
-		case key.Matches(msg, m.kb.open):
+		case key.Matches(msg, m.kb.Open):
 			m.searchMode = false
 			filePath, ok := m.filePath()
 			if !ok {
@@ -261,7 +274,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.openCommand()
 			}
 
-		case key.Matches(msg, m.kb.back):
+		case key.Matches(msg, m.kb.Back):
 			m.searchMode = false
 			m.prevName = filepath.Base(m.path)
 			m.path = filepath.Join(m.path, "..")
@@ -275,62 +288,62 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.list()
 			return m, nil
 
-		case key.Matches(msg, m.kb.up):
+		case key.Matches(msg, m.kb.Up):
 			m.moveUp()
 
-		case key.Matches(msg, m.kb.top, m.kb.pageUp, m.kb.vimTop):
+		case key.Matches(msg, m.kb.Top, m.kb.PageUp, m.kb.VimTop):
 			m.moveTop()
 
-		case key.Matches(msg, m.kb.bottom, m.kb.pageDown, m.kb.vimBottom):
+		case key.Matches(msg, m.kb.Bottom, m.kb.PageDown, m.kb.VimBottom):
 			m.moveBottom()
 
-		case key.Matches(msg, m.kb.leftmost):
+		case key.Matches(msg, m.kb.Leftmost):
 			m.moveLeftmost()
 
-		case key.Matches(msg, m.kb.rightmost):
+		case key.Matches(msg, m.kb.Rightmost):
 			m.moveRightmost()
 
-		case key.Matches(msg, m.kb.home):
+		case key.Matches(msg, m.kb.Home):
 			m.moveStart()
 
-		case key.Matches(msg, m.kb.end):
+		case key.Matches(msg, m.kb.End):
 			m.moveEnd()
 
-		case key.Matches(msg, m.kb.vimUp):
+		case key.Matches(msg, m.kb.VimUp):
 			if !m.searchMode {
 				m.moveUp()
 			}
 
-		case key.Matches(msg, m.kb.down):
+		case key.Matches(msg, m.kb.Down):
 			m.moveDown()
 
-		case key.Matches(msg, m.kb.vimDown):
+		case key.Matches(msg, m.kb.VimDown):
 			if !m.searchMode {
 				m.moveDown()
 			}
 
-		case key.Matches(msg, m.kb.left):
+		case key.Matches(msg, m.kb.Left):
 			m.moveLeft()
 
-		case key.Matches(msg, m.kb.vimLeft):
+		case key.Matches(msg, m.kb.VimLeft):
 			if !m.searchMode {
 				m.moveLeft()
 			}
 
-		case key.Matches(msg, m.kb.right):
+		case key.Matches(msg, m.kb.Right):
 			m.moveRight()
 
-		case key.Matches(msg, m.kb.vimRight):
+		case key.Matches(msg, m.kb.VimRight):
 			if !m.searchMode {
 				m.moveRight()
 			}
 
-		case key.Matches(msg, m.kb.search):
+		case key.Matches(msg, m.kb.Search):
 			m.searchMode = true
 			m.searchId++
 			m.search = ""
 
-		case key.Matches(msg, m.kb.preview):
+		case key.Matches(msg, m.kb.Preview):
 			m.previewMode = !m.previewMode
 			// Reset position history as c&r changes.
 			m.positions = make(map[string]position)
@@ -348,7 +361,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.previewContent = ""
 			return m, tea.ExitAltScreen
 
-		case key.Matches(msg, m.kb.delete):
+		case key.Matches(msg, m.kb.Delete):
 			filePathToDelete, ok := m.filePath()
 			if ok {
 				if m.deleteCurrentFile {
@@ -367,14 +380,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case key.Matches(msg, m.kb.undo):
+		case key.Matches(msg, m.kb.Undo):
 			if len(m.toBeDeleted) > 0 {
 				m.toBeDeleted = m.toBeDeleted[:len(m.toBeDeleted)-1]
 				m.list()
 				m.previewContent = ""
 				return m, nil
 			}
-		case key.Matches(msg, m.kb.yank):
+		case key.Matches(msg, m.kb.Yank):
 			// copy path to clipboard
 			clipboard.WriteAll(m.path)
 			m.yankSuccess = true
@@ -533,6 +546,11 @@ func (m *Model) View() string {
 		)
 	}
 	return main
+}
+
+func (m *Model) Value() string {
+	path, _ := m.filePath()
+	return path
 }
 
 func (m *Model) moveUp() {
