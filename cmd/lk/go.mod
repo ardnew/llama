@@ -3,7 +3,7 @@ module github.com/ardnew/walk/cmd/lk
 go 1.21.4
 
 require (
-	github.com/ardnew/walk/v2 v2.1.0
+	github.com/ardnew/walk/v2 v2.2.0
 	github.com/charmbracelet/bubbletea v0.25.0
 	github.com/charmbracelet/lipgloss v0.9.1
 	github.com/muesli/termenv v0.15.2
