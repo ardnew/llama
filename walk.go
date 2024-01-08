@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"runtime"
 	. "strings"
-	"text/tabwriter"
 	"time"
 	"unicode/utf8"
 
@@ -21,26 +20,39 @@ import (
 	"github.com/sahilm/fuzzy"
 )
 
-var version = "v1.7.0"
+var version = "v2.1.0"
+
+func Version() string { return version }
 
 const separator = "    " // Separator between columns.
 
 var (
-	warning       = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).PaddingLeft(1).PaddingRight(1)
-	preview       = lipgloss.NewStyle().PaddingLeft(2)
-	cursor        = lipgloss.NewStyle().Background(lipgloss.Color("#825DF2")).Foreground(lipgloss.Color("#FFFFFF"))
-	bar           = lipgloss.NewStyle().Background(lipgloss.Color("#5C5C5C")).Foreground(lipgloss.Color("#FFFFFF"))
-	search        = lipgloss.NewStyle().Background(lipgloss.Color("#499F1C")).Foreground(lipgloss.Color("#FFFFFF"))
-	danger        = lipgloss.NewStyle().Background(lipgloss.Color("#FF0000")).Foreground(lipgloss.Color("#FFFFFF"))
 	fileSeparator = string(filepath.Separator)
 	showIcons     = false
 )
+
+type Styles struct {
+	Warning, Preview, Cursor, Bar, Search, Danger lipgloss.Style
+}
+
+func DefaultStyle() *Styles {
+	return &Styles{
+		Warning: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).PaddingLeft(1).PaddingRight(1),
+		Preview: lipgloss.NewStyle().PaddingLeft(2),
+		Cursor:  lipgloss.NewStyle().Background(lipgloss.Color("#825DF2")).Foreground(lipgloss.Color("#FFFFFF")),
+		Bar:     lipgloss.NewStyle().Background(lipgloss.Color("#5C5C5C")).Foreground(lipgloss.Color("#FFFFFF")),
+		Search:  lipgloss.NewStyle().Background(lipgloss.Color("#499F1C")).Foreground(lipgloss.Color("#FFFFFF")),
+		Danger:  lipgloss.NewStyle().Background(lipgloss.Color("#FF0000")).Foreground(lipgloss.Color("#FFFFFF")),
+	}
+}
 
 type Model struct {
 	path              string              // Current dir path we are looking at.
 	files             []fs.DirEntry       // Files we are looking at.
 	err               error               // Error while listing files.
 	kb                *keyMap             // Key bindings.
+	st                *Styles             // Rendering attributes.
+	cmdline           []string            // Command line to open files.
 	c, r              int                 // Selector position in columns and rows.
 	columns, rows     int                 // Displayed amount of rows and columns.
 	width, height     int                 // Terminal size.
@@ -106,12 +118,34 @@ func (m *Model) WithIcons() *Model {
 	return m
 }
 
+func Command(cmd string) Option {
+	return func(m *Model) *Model { return m.WithCommand(cmd) }
+}
+
+func (m *Model) WithCommand(cmd string) *Model {
+	m.cmdline = Fields(cmd)
+	return m
+}
+
+func Style(styles *Styles) Option {
+	return func(m *Model) *Model { return m.WithStyle(styles) }
+}
+
+func (m *Model) WithStyle(styles *Styles) *Model {
+	m.st = styles
+	return m
+}
+
 func New(options ...Option) *Model {
-	m := &Model{
+	m := (&Model{
 		kb:        newKeyMap(),
 		positions: make(map[string]position),
+	}).With(options...)
+
+	if m.st == nil {
+		m.st = DefaultStyle()
 	}
-	return m.With(options...)
+	return m
 }
 
 func (m *Model) With(options ...Option) *Model {
@@ -130,7 +164,7 @@ func (m *Model) Init() tea.Cmd {
 		m.path, err = os.Getwd()
 		if err != nil {
 			_, _ = fmt.Fprintln(os.Stderr,
-				danger.Render("error: failed to get working directory"))
+				m.st.Danger.Render("error: failed to get working directory"))
 		}
 	}
 	m.list()
@@ -224,7 +258,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.list()
 			} else {
 				// Open file. This will block until complete.
-				return m, m.openEditor()
+				return m, m.openCommand()
 			}
 
 		case key.Matches(msg, m.kb.back):
@@ -426,9 +460,9 @@ func (m *Model) View() string {
 		for i := 0; i < m.columns; i++ {
 			if i == m.c && j == m.r {
 				if m.deleteCurrentFile {
-					row[i] = danger.Render(names[i][j])
+					row[i] = m.st.Danger.Render(names[i][j])
 				} else {
-					row[i] = cursor.Render(names[i][j])
+					row[i] = m.st.Cursor.Render(names[i][j])
 				}
 			} else {
 				row[i] = names[i][j]
@@ -443,7 +477,7 @@ func (m *Model) View() string {
 
 	// Preview pane.
 	fileName, _ := m.fileName()
-	previewPane := bar.Render(fileName) + "\n"
+	previewPane := m.st.Bar.Render(fileName) + "\n"
 	previewPane += m.previewContent
 
 	// Location bar (grey).
@@ -465,14 +499,14 @@ func (m *Model) View() string {
 	if barLen > outputWidth {
 		location = location[min(barLen-outputWidth, len(location)):]
 	}
-	barStr := bar.Render(location) + search.Render(filter)
+	barStr := m.st.Bar.Render(location) + m.st.Search.Render(filter)
 
 	main := barStr + "\n" + Join(output, "\n")
 
 	if m.err != nil {
-		main = barStr + "\n" + warning.Render(m.err.Error())
+		main = barStr + "\n" + m.st.Warning.Render(m.err.Error())
 	} else if len(m.files) == 0 {
-		main = barStr + "\n" + warning.Render("No files")
+		main = barStr + "\n" + m.st.Warning.Render("No files")
 	}
 
 	// Delete bar.
@@ -480,20 +514,20 @@ func (m *Model) View() string {
 		toDelete := m.toBeDeleted[len(m.toBeDeleted)-1]
 		timeLeft := int(time.Until(toDelete.at).Seconds())
 		deleteBar := fmt.Sprintf("%v deleted. (u)ndo %v", path.Base(toDelete.path), timeLeft)
-		main += "\n" + danger.Render(deleteBar)
+		main += "\n" + m.st.Danger.Render(deleteBar)
 	}
 
 	// Yank success.
 	if m.yankSuccess {
 		yankBar := fmt.Sprintf("yanked path to clipboard: %v", m.path)
-		main += "\n" + bar.Render(yankBar)
+		main += "\n" + m.st.Bar.Render(yankBar)
 	}
 
 	if m.previewMode {
 		return lipgloss.JoinHorizontal(
 			lipgloss.Top,
 			main,
-			preview.
+			m.st.Preview.
 				MaxHeight(m.height).
 				Render(previewPane),
 		)
@@ -654,14 +688,26 @@ func (m *Model) filePath() (string, bool) {
 	return path.Join(m.path, fileName), true
 }
 
-func (m *Model) openEditor() tea.Cmd {
+func (m *Model) openCommand() tea.Cmd {
 	filePath, ok := m.filePath()
 	if !ok {
 		return nil
 	}
 
-	cmdline := Split(lookup([]string{"WALK_EDITOR", "EDITOR"}, "less"), " ")
-	cmdline = append(cmdline, filePath)
+	cmdline := m.cmdline
+	if len(cmdline) == 0 || cmdline[0] == "" {
+		cmdline = Fields(lookup([]string{"LK_COMMAND", "EDITOR"}, "less"))
+	}
+	var replace bool
+	for i, s := range cmdline {
+		if replace = Contains(s, "{}"); replace {
+			cmdline[i] = ReplaceAll(s, "{}", filePath)
+			break
+		}
+	}
+	if !replace {
+		cmdline = append(cmdline, filePath)
+	}
 
 	execCmd := exec.Command(cmdline[0], cmdline[1:]...)
 	return tea.ExecProcess(execCmd, func(err error) tea.Msg {
@@ -715,7 +761,7 @@ func (m *Model) preview() {
 	if isImageExt(filePath) {
 		img, err := drawImage(filePath, width, height)
 		if err != nil {
-			m.previewContent = warning.Render("No image preview available")
+			m.previewContent = m.st.Warning.Render("No image preview available")
 			return
 		}
 		m.previewContent = img
@@ -749,7 +795,7 @@ func (m *Model) preview() {
 	case utf8.Valid(content):
 		m.previewContent = leaveOnlyAscii(content)
 	default:
-		m.previewContent = warning.Render("No preview available")
+		m.previewContent = m.st.Warning.Render("No preview available")
 	}
 }
 
@@ -863,33 +909,6 @@ func lookup(names []string, val string) string {
 		}
 	}
 	return val
-}
-
-func Usage() {
-	_, _ = fmt.Fprintf(os.Stderr, "\n  "+cursor.Render(" walk ")+"\n\n  Usage: walk [path]\n\n")
-	w := tabwriter.NewWriter(os.Stderr, 0, 8, 2, ' ', 0)
-	put := func(s string) {
-		_, _ = fmt.Fprintln(w, s)
-	}
-	put("    Arrows, hjkl\tMove cursor")
-	put("    Enter\tEnter directory")
-	put("    Backspace\tExit directory")
-	put("    Space\tToggle preview")
-	put("    Esc, q\tExit with cd")
-	put("    Ctrl+c\tExit without cd")
-	put("    /\tFuzzy search")
-	put("    dd\tDelete file or dir")
-	put("    y\tYank current directory path to clipboard")
-	put("\n  Flags:\n")
-	put("    --icons\tdisplay icons")
-	_ = w.Flush()
-	_, _ = fmt.Fprintf(os.Stderr, "\n")
-	os.Exit(1)
-}
-
-func Version() {
-	fmt.Printf("\n  %s %s\n\n", cursor.Render(" walk "), Version)
-	os.Exit(0)
 }
 
 func min(a, b int) int {
