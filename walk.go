@@ -3,7 +3,6 @@ package walk
 import (
 	"fmt"
 	"io/fs"
-	"math"
 	"os"
 	"os/exec"
 	"path"
@@ -31,30 +30,11 @@ var (
 	showIcons     = false
 )
 
-type Styles struct {
-	Warning, Preview, Cursor, Bar, Search, Danger lipgloss.Style
-}
-
-func NewStyles() *Styles { return new(Styles).Default() }
-
-func (s *Styles) Default() *Styles {
-	if s == nil {
-		s = new(Styles)
-	}
-	s.Warning = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).PaddingLeft(1).PaddingRight(1)
-	s.Preview = lipgloss.NewStyle().PaddingLeft(2)
-	s.Cursor =  lipgloss.NewStyle().Background(lipgloss.Color("#825DF2")).Foreground(lipgloss.Color("#FFFFFF"))
-	s.Bar =     lipgloss.NewStyle().Background(lipgloss.Color("#5C5C5C")).Foreground(lipgloss.Color("#FFFFFF"))
-	s.Search =  lipgloss.NewStyle().Background(lipgloss.Color("#499F1C")).Foreground(lipgloss.Color("#FFFFFF"))
-	s.Danger =  lipgloss.NewStyle().Background(lipgloss.Color("#FF0000")).Foreground(lipgloss.Color("#FFFFFF"))
-	return s
-}
-
 type Model struct {
 	path              string              // Current dir path we are looking at.
 	files             []fs.DirEntry       // Files we are looking at.
 	err               error               // Error while listing files.
-	kb                *KeyMap             // Key bindings.
+	keys              *KeyMap             // Key bindings.
 	st                *Styles             // Rendering attributes.
 	cmdline           []string            // Command line to open files.
 	c, r              int                 // Selector position in columns and rows.
@@ -68,7 +48,7 @@ type Model struct {
 	matchedIndexes    []int               // List of char found indexes.
 	prevName          string              // Base name of previous directory before "up".
 	findPrevName      bool                // On View(), set c&r to point to prevName.
-	exitCode          int                 // Exit code.
+	status            int                 // Exit code.
 	previewMode       bool                // Whether preview is active.
 	previewContent    string              // Content of preview.
 	deleteCurrentFile bool                // Whether to delete current file.
@@ -91,69 +71,12 @@ type (
 	toBeDeletedMsg int
 )
 
-type Option func(*Model) *Model
+// New returns a new Model with the given options applied.
+func New(options ...Option[*Model]) *Model {
+	m := (&Model{positions: make(map[string]position)}).With(options...)
 
-func Path(path string) Option {
-	return func(m *Model) *Model { return m.WithPath(path) }
-}
-
-func (m *Model) WithPath(path string) *Model {
-	m.path = path
-	return m
-}
-
-func Size(width, height int) Option {
-	return func(m *Model) *Model { return m.WithSize(width, height) }
-}
-
-func (m *Model) WithSize(width, height int) *Model {
-	m.width = width
-	m.height = height
-	return m
-}
-
-func Icons() Option {
-	return func(m *Model) *Model { return m.WithIcons() }
-}
-
-func (m *Model) WithIcons() *Model {
-	showIcons = true
-	parseIcons()
-	return m
-}
-
-func Command(cmd string) Option {
-	return func(m *Model) *Model { return m.WithCommand(cmd) }
-}
-
-func (m *Model) WithCommand(cmd string) *Model {
-	m.cmdline = Fields(cmd)
-	return m
-}
-
-func Style(styles *Styles) Option {
-	return func(m *Model) *Model { return m.WithStyle(styles) }
-}
-
-func (m *Model) WithStyle(styles *Styles) *Model {
-	m.st = styles
-	return m
-}
-
-func Keys(keys *KeyMap) Option {
-	return func(m *Model) *Model { return m.WithKeys(keys) }
-}
-
-func (m *Model) WithKeys(keys *KeyMap) *Model {
-	m.kb = keys
-	return m
-}
-
-func New(options ...Option) *Model {
-	m := (&Model{ positions: make(map[string]position) }).With(options...)
-
-	if m.kb == nil {
-		m.kb = m.kb.Default()
+	if m.keys == nil {
+		m.keys = m.keys.Default()
 	}
 	if m.st == nil {
 		m.st = m.st.Default()
@@ -161,16 +84,42 @@ func New(options ...Option) *Model {
 	return m
 }
 
-func (m *Model) With(options ...Option) *Model {
-	for _, option := range options {
-		m = option(m)
-	}
-	return m
+// Path returns an Option that sets the path for a Model.
+func Path(path string) Option[*Model] {
+	return func(m *Model) *Model { return m.WithPath(path) }
 }
 
-func Kill(status int)  { os.Exit(status) }
-func (m *Model) Exit() { Kill(m.exitCode) }
+// Size returns an Option that sets the width and height of a Model.
+func Size(width, height int) Option[*Model] {
+	return func(m *Model) *Model { return m.WithSize(width, height) }
+}
 
+// Icons returns an Option that enables file type icons for a Model.
+func Icons() Option[*Model] {
+	return func(m *Model) *Model { return m.WithIcons() }
+}
+
+// Command returns an Option that sets the "open file" command with for a Model.
+func Command(cmd string) Option[*Model] {
+	return func(m *Model) *Model { return m.WithCommand(cmd) }
+}
+
+// Style returns an Option that sets the rendering attributes for a Model.
+func Style(styles *Styles) Option[*Model] {
+	return func(m *Model) *Model { return m.WithStyle(styles) }
+}
+
+// Keys returns an Option that sets the key bindings for a Model.
+func Keys(keys *KeyMap) Option[*Model] {
+	return func(m *Model) *Model { return m.WithKeys(keys) }
+}
+
+// Kill exits the program with the given exit status.
+func Kill(status int) { os.Exit(status) }
+
+// Init initializes the receiver.
+//
+// Init is a required method of the Bubble Tea framework's Model interface.
 func (m *Model) Init() tea.Cmd {
 	if m.path == "" {
 		var err error
@@ -184,6 +133,10 @@ func (m *Model) Init() tea.Cmd {
 	return nil
 }
 
+// Update updates the receiver with the given message and returns the updated
+// Model and any command to pass on to the Bubble Tea runtime.
+//
+// Update is a required method of the Bubble Tea framework's Model interface.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -204,10 +157,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if m.searchMode {
-			if key.Matches(msg, m.kb.Search) {
+			if key.Matches(msg, m.keys.Search) {
 				m.searchMode = false
 				return m, nil
-			} else if key.Matches(msg, m.kb.Back) {
+			} else if key.Matches(msg, m.keys.Back) {
 				if len(m.search) > 0 {
 					m.search = m.search[:len(m.search)-1]
 					return m, nil
@@ -237,20 +190,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch {
-		case key.Matches(msg, m.kb.ForceQuit):
-			_, _ = fmt.Fprintln(os.Stderr) // Keep last item visible after prompt.
-			m.exitCode = 2
+		case key.Matches(msg, m.keys.ForceQuit):
+			// _, _ = fmt.Fprintln(os.Stderr) // Keep last item visible after prompt.
+			m.status = 2
 			m.dontDoPendingDeletions()
 			return m, tea.Quit
 
-		case key.Matches(msg, m.kb.Quit, m.kb.QuitQ):
-			_, _ = fmt.Fprintln(os.Stderr) // Keep last item visible after prompt.
-			fmt.Println(m.path)            // Write to cd.
-			m.exitCode = 0
+		case key.Matches(msg, m.keys.Quit, m.keys.QuitQ):
+			// _, _ = fmt.Fprintln(os.Stderr) // Keep last item visible after prompt.
+			fmt.Println(m.path) // Write to cd.
+			m.status = 0
 			m.performPendingDeletions()
 			return m, tea.Quit
 
-		case key.Matches(msg, m.kb.Open):
+		case key.Matches(msg, m.keys.Open):
 			m.searchMode = false
 			filePath, ok := m.filePath()
 			if !ok {
@@ -274,7 +227,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.openCommand()
 			}
 
-		case key.Matches(msg, m.kb.Back):
+		case key.Matches(msg, m.keys.Back):
 			m.searchMode = false
 			m.prevName = filepath.Base(m.path)
 			m.path = filepath.Join(m.path, "..")
@@ -288,62 +241,62 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.list()
 			return m, nil
 
-		case key.Matches(msg, m.kb.Up):
+		case key.Matches(msg, m.keys.Up):
 			m.moveUp()
 
-		case key.Matches(msg, m.kb.Top, m.kb.PageUp, m.kb.VimTop):
+		case key.Matches(msg, m.keys.Top, m.keys.PageUp, m.keys.VimTop):
 			m.moveTop()
 
-		case key.Matches(msg, m.kb.Bottom, m.kb.PageDown, m.kb.VimBottom):
+		case key.Matches(msg, m.keys.Bottom, m.keys.PageDown, m.keys.VimBottom):
 			m.moveBottom()
 
-		case key.Matches(msg, m.kb.Leftmost):
+		case key.Matches(msg, m.keys.Leftmost):
 			m.moveLeftmost()
 
-		case key.Matches(msg, m.kb.Rightmost):
+		case key.Matches(msg, m.keys.Rightmost):
 			m.moveRightmost()
 
-		case key.Matches(msg, m.kb.Home):
+		case key.Matches(msg, m.keys.Home):
 			m.moveStart()
 
-		case key.Matches(msg, m.kb.End):
+		case key.Matches(msg, m.keys.End):
 			m.moveEnd()
 
-		case key.Matches(msg, m.kb.VimUp):
+		case key.Matches(msg, m.keys.VimUp):
 			if !m.searchMode {
 				m.moveUp()
 			}
 
-		case key.Matches(msg, m.kb.Down):
+		case key.Matches(msg, m.keys.Down):
 			m.moveDown()
 
-		case key.Matches(msg, m.kb.VimDown):
+		case key.Matches(msg, m.keys.VimDown):
 			if !m.searchMode {
 				m.moveDown()
 			}
 
-		case key.Matches(msg, m.kb.Left):
+		case key.Matches(msg, m.keys.Left):
 			m.moveLeft()
 
-		case key.Matches(msg, m.kb.VimLeft):
+		case key.Matches(msg, m.keys.VimLeft):
 			if !m.searchMode {
 				m.moveLeft()
 			}
 
-		case key.Matches(msg, m.kb.Right):
+		case key.Matches(msg, m.keys.Right):
 			m.moveRight()
 
-		case key.Matches(msg, m.kb.VimRight):
+		case key.Matches(msg, m.keys.VimRight):
 			if !m.searchMode {
 				m.moveRight()
 			}
 
-		case key.Matches(msg, m.kb.Search):
+		case key.Matches(msg, m.keys.Search):
 			m.searchMode = true
 			m.searchId++
 			m.search = ""
 
-		case key.Matches(msg, m.kb.Preview):
+		case key.Matches(msg, m.keys.Preview):
 			m.previewMode = !m.previewMode
 			// Reset position history as c&r changes.
 			m.positions = make(map[string]position)
@@ -361,7 +314,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.previewContent = ""
 			return m, tea.ExitAltScreen
 
-		case key.Matches(msg, m.kb.Delete):
+		case key.Matches(msg, m.keys.Delete):
 			filePathToDelete, ok := m.filePath()
 			if ok {
 				if m.deleteCurrentFile {
@@ -380,14 +333,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case key.Matches(msg, m.kb.Undo):
+		case key.Matches(msg, m.keys.Undo):
 			if len(m.toBeDeleted) > 0 {
 				m.toBeDeleted = m.toBeDeleted[:len(m.toBeDeleted)-1]
 				m.list()
 				m.previewContent = ""
 				return m, nil
 			}
-		case key.Matches(msg, m.kb.Yank):
+		case key.Matches(msg, m.keys.Yank):
 			// copy path to clipboard
 			clipboard.WriteAll(m.path)
 			m.yankSuccess = true
@@ -424,6 +377,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// View returns a string representation of the receiver's current state
+// including all markup, styling, terminal escape sequences, etc.
+//
+// View is a required method of the Bubble Tea framework's Model interface.
 func (m *Model) View() string {
 	width := m.width
 	if m.previewMode {
@@ -548,9 +505,59 @@ func (m *Model) View() string {
 	return main
 }
 
+// Exit exits the program with the receiver's current exit status.
+func (m *Model) Exit() { Kill(m.status) }
+
+// Value returns the path of the currently selected file.
 func (m *Model) Value() string {
 	path, _ := m.filePath()
 	return path
+}
+
+// With returns the receiver with the given options applied.
+func (m *Model) With(options ...Option[*Model]) *Model {
+	for _, option := range options {
+		m = option(m)
+	}
+	return m
+}
+
+// WithPath returns the receiver with the given path set.
+func (m *Model) WithPath(path string) *Model {
+	m.path = path
+	return m
+}
+
+// WithSize returns the receiver with the given width and height set.
+func (m *Model) WithSize(width, height int) *Model {
+	m.width = width
+	m.height = height
+	return m
+}
+
+// WithIcons returns the receiver with file type icons enabled.
+func (m *Model) WithIcons() *Model {
+	showIcons = true
+	parseIcons()
+	return m
+}
+
+// WithCommand returns the receiver with the given "open file" command set.
+func (m *Model) WithCommand(cmd string) *Model {
+	m.cmdline = Fields(cmd)
+	return m
+}
+
+// WithStyle returns the receiver with the given rendering attributes set.
+func (m *Model) WithStyle(styles *Styles) *Model {
+	m.st = styles
+	return m
+}
+
+// WithKeys returns the receiver with the given key bindings set.
+func (m *Model) WithKeys(keys *KeyMap) *Model {
+	m.keys = keys
+	return m
 }
 
 func (m *Model) moveUp() {
@@ -817,87 +824,6 @@ func (m *Model) preview() {
 	}
 }
 
-func leaveOnlyAscii(content []byte) string {
-	var result []byte
-
-	for _, b := range content {
-		if b == '\t' {
-			result = append(result, ' ', ' ', ' ', ' ')
-		} else if b == '\r' {
-			continue
-		} else if (b >= 32 && b <= 127) || b == '\n' { // '\n' is kept if newline needs to be retained
-			result = append(result, b)
-		}
-	}
-
-	return string(result)
-}
-
-func wrap(files []os.DirEntry, width int, height int, callback func(name string, i, j int)) ([][]string, int, int) {
-	// If it's possible to fit all files in one column on a third of the screen,
-	// just use one column. Otherwise, let's squeeze listing in half of screen.
-	columns := len(files) / (height / 3)
-	if columns <= 0 {
-		columns = 1
-	}
-
-start:
-	// Let's try to fit everything in terminal width with this many columns.
-	// If we are not able to do it, decrease column number and goto start.
-	rows := int(math.Ceil(float64(len(files)) / float64(columns)))
-	names := make([][]string, columns)
-	n := 0
-
-	for i := 0; i < columns; i++ {
-		names[i] = make([]string, rows)
-		// Columns size is going to be of max file name size.
-		max := 0
-		for j := 0; j < rows; j++ {
-			name := ""
-			if n < len(files) {
-				if showIcons {
-					info, err := files[n].Info()
-					if err == nil {
-						icon := icons.getIcon(info)
-						if icon != "" {
-							name += icon + " "
-						}
-					}
-				}
-				name += files[n].Name()
-				if callback != nil {
-					callback(files[n].Name(), i, j)
-				}
-				if files[n].IsDir() {
-					// Dirs should have a slash at the end.
-					name += fileSeparator
-				}
-				n++
-			}
-			if max < len(name) {
-				max = len(name)
-			}
-			names[i][j] = name
-		}
-		// Append spaces to make all names in one column of same size.
-		for j := 0; j < rows; j++ {
-			names[i][j] += Repeat(" ", max-len(names[i][j]))
-		}
-	}
-	for j := 0; j < rows; j++ {
-		row := make([]string, columns)
-		for i := 0; i < columns; i++ {
-			row[i] = names[i][j]
-		}
-		if len(Join(row, separator)) > width && columns > 1 {
-			// Yep. No luck, let's decrease number of columns and try one more time.
-			columns--
-			goto start
-		}
-	}
-	return names, rows, columns
-}
-
 func (m *Model) dontDoPendingDeletions() {
 	for _, toDelete := range m.toBeDeleted {
 		fmt.Fprintf(os.Stderr, "Was not deleted: %v\n", toDelete.path)
@@ -909,36 +835,4 @@ func (m *Model) performPendingDeletions() {
 		_ = os.RemoveAll(toDelete.path)
 	}
 	m.toBeDeleted = nil
-}
-
-func fileInfo(path string) os.FileInfo {
-	fi, err := os.Stat(path)
-	if err != nil {
-		panic(err)
-	}
-	return fi
-}
-
-func lookup(names []string, val string) string {
-	for _, name := range names {
-		val, ok := os.LookupEnv(name)
-		if ok && val != "" {
-			return val
-		}
-	}
-	return val
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
