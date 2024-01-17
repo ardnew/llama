@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/huh"
 )
 
-type Field struct {
+type field struct {
 	*Model
 
 	value *FilePath
@@ -39,163 +39,162 @@ type Field struct {
 // KeyMap(keys *huh.KeyMap) huh.Field
 // Width(width int) huh.Field
 
-func Value(value string) Option[*Field] {
-	return func(f *Field) *Field { return f.WithValue(value) }
+// Value returns an Option that sets the value of a field.
+func Value(value string) Option[*field] {
+	return func(f *field) *field { return f.WithValue(value) }
 }
 
-func Key(key string) Option[*Field] {
-	return func(f *Field) *Field { return f.WithKey(key) }
+// Key returns an Option that sets the key of a field.
+func Key(key string) Option[*field] {
+	return func(f *field) *field { return f.WithKey(key) }
 }
 
-func Heading(heading string) Option[*Field] {
-	return func(f *Field) *Field { return f.WithHeading(heading) }
+// Heading returns an Option that sets the heading of a field.
+func Heading(heading string) Option[*field] {
+	return func(f *field) *field { return f.WithHeading(heading) }
 }
 
-func Caption(caption string) Option[*Field] {
-	return func(f *Field) *Field { return f.WithCaption(caption) }
+// Caption returns an Option that sets the caption of a field.
+func Caption(caption string) Option[*field] {
+	return func(f *field) *field { return f.WithCaption(caption) }
 }
 
-func Validate(validate func(FilePath) error) Option[*Field] {
-	return func(f *Field) *Field { return f.WithValidate(validate) }
+// Validate returns an Option that sets the validation function of a field.
+func Validate(validate func(FilePath) error) Option[*field] {
+	return func(f *field) *field { return f.WithValidate(validate) }
 }
 
-// Field returns a new Field of the receiver Model.
-//
-// Field implements both its epynomous interface and the Model interface used in
-// the Bubble Tea framework (module packages "huh" & "bubbletea", respectively).
-func (m *Model) Field(options ...Option[*Field]) *Field {
-	filter := textinput.New()
-	filter.Prompt = "/"
-
-	return &Field{
-		Model:    m,
-		value:    new(FilePath),
-		validate: func(FilePath) error { return nil },
-		filter:   filter,
-	}
+// Prompt returns an Option that sets the prompt of a field.
+func Prompt(prompt string) Option[*field] {
+	return func(f *field) *field { return f.WithPrompt(prompt) }
 }
 
-// Init initializes the Field.
-func (f *Field) Init() tea.Cmd {
+// Init initializes the field.
+func (f *field) Init() tea.Cmd {
 	return f.Model.Init()
 }
 
-func (f *Field) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (f *field) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, cmd := f.Model.Update(msg)
 	return f, cmd
 }
 
-func (f *Field) View() string {
+func (f *field) View() string {
 	return f.Model.View()
 }
 
-// Blur blurs the Field.
-func (f *Field) Blur() tea.Cmd {
+// Blur blurs the field.
+func (f *field) Blur() tea.Cmd {
 	f.isFocused = false
 	f.err = f.validate(*f.value)
 	return nil
 }
 
-// Focus focuses the Field.
-func (f *Field) Focus() tea.Cmd {
+// Focus focuses the field.
+func (f *field) Focus() tea.Cmd {
 	f.isFocused = true
 	return nil
 }
 
-// Error returns the error of the Field.
-func (f *Field) Error() error {
+// Error returns the error of the field.
+func (f *field) Error() error {
 	return f.err
 }
 
-// Run runs the Field.
-func (f *Field) Run() error {
+// Run runs the field.
+func (f *field) Run() error {
 	if f.accessible {
 		return f.runAccessible()
 	}
 	return newRunError(huh.Run(f))
 }
 
-// KeyBinds returns the keybindings for the Field.
-func (f *Field) KeyBinds() []key.Binding {
+// KeyBinds returns the keybindings for the field.
+func (f *field) KeyBinds() []key.Binding {
 	return []key.Binding{} // f.keys.bindings()
 }
 
 // With returns the receiver with the given options applied.
-func (f *Field) With(options ...Option[*Field]) *Field {
+func (f *field) With(options ...Option[*field]) *field {
 	for _, option := range options {
 		f = option(f)
 	}
 	return f
 }
 
-// WithTheme sets the theme of the Field.
-func (f *Field) WithTheme(theme *huh.Theme) huh.Field {
+// WithTheme sets the theme of the field.
+func (f *field) WithTheme(theme *huh.Theme) huh.Field {
 	f.theme = theme
 	f.filter.Cursor.Style = f.theme.Focused.TextInput.Cursor
 	f.filter.PromptStyle = f.theme.Focused.TextInput.Prompt
 	return f
 }
 
-// WithAccessible sets the accessible mode of the Field.
-func (f *Field) WithAccessible(accessible bool) huh.Field {
+// WithAccessible sets the accessible mode of the field.
+func (f *field) WithAccessible(accessible bool) huh.Field {
 	f.accessible = accessible
 	return f
 }
 
-// WithKeyMap sets the keymap on a Field.
-func (f *Field) WithKeyMap(keys *huh.KeyMap) huh.Field {
+// WithKeyMap sets the keymap on a field.
+func (f *field) WithKeyMap(keys *huh.KeyMap) huh.Field {
 	// TBD
 	return f
 }
 
-// WithWidth sets the width of the Field.
-func (f *Field) WithWidth(width int) huh.Field {
+// WithWidth sets the width of the field.
+func (f *field) WithWidth(width int) huh.Field {
 	f.width = width
 	return f
 }
 
 // GetKey returns the key of the field.
-func (f *Field) GetKey() string {
+func (f *field) GetKey() string {
 	return f.key
 }
 
 // GetValue returns the value of the field.
-func (f *Field) GetValue() any {
+func (f *field) GetValue() any {
 	return f.value.path()
 }
 
-// Value sets the value of the Field.
-func (f *Field) WithValue(value string) *Field {
+// WithValue sets the value of the field.
+func (f *field) WithValue(value string) *field {
 	f.value = f.value.init(value)
 	return f
 }
 
-// Key sets the key of the Field which can be used to retrieve the value
-// after submission.
-func (f *Field) WithKey(key string) *Field {
+// WithKey sets the key of the field.
+func (f *field) WithKey(key string) *field {
 	f.key = key
 	return f
 }
 
-// Heading sets the heading of the Field.
-func (f *Field) WithHeading(heading string) *Field {
+// WithHeading sets the heading of the field.
+func (f *field) WithHeading(heading string) *field {
 	f.heading = heading
 	return f
 }
 
-// Caption sets the caption of the Field.
-func (f *Field) WithCaption(caption string) *Field {
+// WithCaption sets the caption of the field.
+func (f *field) WithCaption(caption string) *field {
 	f.caption = caption
 	return f
 }
 
-// Validate sets the validation function of the Field.
-func (f *Field) WithValidate(validate func(FilePath) error) *Field {
+// WithValidate sets the validation function of the field.
+func (f *field) WithValidate(validate func(FilePath) error) *field {
 	f.validate = validate
 	return f
 }
 
-func (f *Field) runAccessible() error {
+// WithPrompt sets the prompt of the field.
+func (f *field) WithPrompt(prompt string) *field {
+	f.filter.Prompt = prompt
+	return f
+}
+
+func (f *field) runAccessible() error {
 	var sb strings.Builder
 	sb.WriteString(f.theme.Focused.Title.Render(f.heading) + "\n")
 
@@ -221,11 +220,11 @@ func (f *Field) runAccessible() error {
 	return nil
 }
 
-func (f *Field) setIsFiltered(isFiltered bool) {
+func (f *field) setIsFiltered(isFiltered bool) {
 	f.isFiltered = isFiltered
 }
 
-func (f *Field) filterFunc(option string) bool {
+func (f *field) filterFunc(option string) bool {
 	// XXX: remove diacritics or allow customization of filter function.
 	return strings.Contains(
 		strings.ToLower(option),

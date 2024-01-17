@@ -14,6 +14,7 @@ import (
 
 	"github.com/antonmedv/clipboard"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sahilm/fuzzy"
@@ -34,6 +35,7 @@ type Model struct {
 	path              string              // Current dir path we are looking at.
 	files             []fs.DirEntry       // Files we are looking at.
 	err               error               // Error while listing files.
+	field             *field              // Bubble Tea Huh form field.
 	keys              *KeyMap             // Key bindings.
 	st                *Styles             // Rendering attributes.
 	cmdline           []string            // Command line to open files.
@@ -75,12 +77,16 @@ type (
 func New(options ...Option[*Model]) *Model {
 	m := (&Model{positions: make(map[string]position)}).With(options...)
 
+	// Use the default key bindings if none provided.
 	if m.keys == nil {
 		m.keys = m.keys.Default()
 	}
+
+	// Use the default style if none provided.
 	if m.st == nil {
 		m.st = m.st.Default()
 	}
+
 	return m
 }
 
@@ -112,6 +118,13 @@ func Style(styles *Styles) Option[*Model] {
 // Keys returns an Option that sets the key bindings for a Model.
 func Keys(keys *KeyMap) Option[*Model] {
 	return func(m *Model) *Model { return m.WithKeys(keys) }
+}
+
+// Field returns an Option that configures Model as a form field.
+//
+// This Option must be provided to initialize Model as a form field.
+func Field(options ...Option[*field]) Option[*Model] {
+	return func(m *Model) *Model { return m.withField(options...) }
 }
 
 // Kill exits the program with the given exit status.
@@ -508,6 +521,9 @@ func (m *Model) View() string {
 // Exit exits the program with the receiver's current exit status.
 func (m *Model) Exit() { Kill(m.status) }
 
+// Field returns the receiver's field used in a form.
+func (m *Model) Field() *field { return m.field }
+
 // Value returns the path of the currently selected file.
 func (m *Model) Value() string {
 	path, _ := m.filePath()
@@ -558,6 +574,33 @@ func (m *Model) WithStyle(styles *Styles) *Model {
 func (m *Model) WithKeys(keys *KeyMap) *Model {
 	m.keys = keys
 	return m
+}
+
+// withField returns the receiver with the given options applied to its field.
+//
+// This method must be called to initialize walk as a form field, and it must
+// be called when initializing a new Model by providing a field Option.
+//
+// The types Model and field both implement different interfaces from the
+// Bubble Tea framework. field is a specialization of Model that allows walk to
+// be used as a discrete field in a Bubble Tea "huh" form application:
+//
+//	|  Interface  | `field` | `Model` |
+//	|------------:|:-------:|:-------:|
+//	| `tea.Model` |    ✓    |    ✓    |
+//	| `huh.Field` |    ✓    |         |
+func (m *Model) withField(options ...Option[*field]) *Model {
+	m.field = (&field{
+		Model:    m,
+		value:    new(FilePath),
+		validate: func(FilePath) error { return nil },
+		filter:   textinput.New(),
+	}).With(options...)
+	return m
+}
+
+func (m *Model) AsField(options ...Option[*field]) *field {
+	return m.withField(options...).field
 }
 
 func (m *Model) moveUp() {
