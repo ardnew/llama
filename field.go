@@ -148,6 +148,17 @@ func (f *field) WithWidth(width int) huh.Field {
 	return f
 }
 
+// WithHeight sets the height of the field.
+func (f *field) WithHeight(height int) huh.Field {
+	f.height = height
+	return f
+}
+
+// WithPosition sets the position of the field.
+func (f *field) WithPosition(p FieldPosition) huh.Field {
+	return f
+}
+
 // GetKey returns the key of the field.
 func (f *field) GetKey() string {
 	return f.key
