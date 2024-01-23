@@ -155,9 +155,9 @@ func (f *field) WithHeight(height int) huh.Field {
 }
 
 // WithPosition sets the position of the field.
-func (f *field) WithPosition(p FieldPosition) huh.Field {
-	return f
-}
+// func (f *field) WithPosition(p huh.FieldPosition) huh.Field {
+// 	return f
+// }
 
 // GetKey returns the key of the field.
 func (f *field) GetKey() string {
