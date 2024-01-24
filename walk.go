@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 	"github.com/sahilm/fuzzy"
 )
 
@@ -29,6 +30,7 @@ const separator = "    " // Separator between columns.
 var (
 	fileSeparator = string(filepath.Separator)
 	showIcons     = false
+	strlen        = runewidth.StringWidth
 )
 
 type Model struct {
@@ -175,7 +177,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			} else if key.Matches(msg, m.keys.Back) {
 				if len(m.search) > 0 {
-					m.search = m.search[:len(m.search)-1]
+					m.search = m.search[:strlen(m.search)-1]
 					return m, nil
 				}
 			} else if msg.Type == tea.KeyRunes {
@@ -421,7 +423,7 @@ func (m *Model) View() string {
 	m.preview()
 
 	// Get output rows width before coloring.
-	outputWidth := len(path.Base(m.path)) // Use current dir name as default.
+	outputWidth := strlen(path.Base(m.path)) // Use current dir name as default.
 	if m.previewMode {
 		row := make([]string, m.columns)
 		for i := 0; i < m.columns; i++ {
@@ -431,7 +433,7 @@ func (m *Model) View() string {
 				outputWidth = width
 			}
 		}
-		outputWidth = max(outputWidth, len(Join(row, separator)))
+		outputWidth = max(outputWidth, strlen(Join(row, separator)))
 	} else {
 		outputWidth = width
 	}
@@ -478,9 +480,9 @@ func (m *Model) View() string {
 		location = TrimSuffix(location, fileSeparator)
 		filter = fileSeparator + m.search
 	}
-	barLen := len(location) + len(filter)
+	barLen := strlen(location) + strlen(filter)
 	if barLen > outputWidth {
-		location = location[min(barLen-outputWidth, len(location)):]
+		location = location[min(barLen-outputWidth, strlen(location)):]
 	}
 	barStr := m.st.Bar.Render(location) + m.st.Search.Render(filter)
 

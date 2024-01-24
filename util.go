@@ -95,14 +95,14 @@ start:
 				}
 				n++
 			}
-			if max < len(name) {
-				max = len(name)
+			if max < strlen(name) {
+				max = strlen(name)
 			}
 			names[i][j] = name
 		}
 		// Append spaces to make all names in one column of same size.
 		for j := 0; j < rows; j++ {
-			names[i][j] += Repeat(" ", max-len(names[i][j]))
+			names[i][j] += Repeat(" ", max-strlen(names[i][j]))
 		}
 	}
 	for j := 0; j < rows; j++ {
@@ -110,7 +110,7 @@ start:
 		for i := 0; i < columns; i++ {
 			row[i] = names[i][j]
 		}
-		if len(Join(row, separator)) > width && columns > 1 {
+		if strlen(Join(row, separator)) > width && columns > 1 {
 			// Yep. No luck, let's decrease number of columns and try one more time.
 			columns--
 			goto start
