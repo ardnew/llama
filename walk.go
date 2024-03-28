@@ -36,7 +36,7 @@ type Model struct {
 	files             []fs.DirEntry       // Files we are looking at.
 	err               error               // Error while listing files.
 	field             *field              // Bubble Tea Huh form field.
-	keys              *KeyMap             // Key bindings.
+	keys              *keyMap             // Key bindings.
 	st                *Styles             // Rendering attributes.
 	cmdline           []string            // Command line to open files.
 	c, r              int                 // Selector position in columns and rows.
@@ -116,7 +116,7 @@ func Style(styles *Styles) Option[*Model] {
 }
 
 // Keys returns an Option that sets the key bindings for a Model.
-func Keys(keys *KeyMap) Option[*Model] {
+func Keys(keys *keyMap) Option[*Model] {
 	return func(m *Model) *Model { return m.WithKeys(keys) }
 }
 
@@ -551,6 +551,11 @@ func (m *Model) WithSize(width, height int) *Model {
 	return m
 }
 
+// Size returns the width and height of the receiver.
+func (m *Model) Size() (width, height int) {
+	return m.width, m.height
+}
+
 // WithIcons returns the receiver with file type icons enabled.
 func (m *Model) WithIcons() *Model {
 	showIcons = true
@@ -571,7 +576,7 @@ func (m *Model) WithStyle(styles *Styles) *Model {
 }
 
 // WithKeys returns the receiver with the given key bindings set.
-func (m *Model) WithKeys(keys *KeyMap) *Model {
+func (m *Model) WithKeys(keys *keyMap) *Model {
 	m.keys = keys
 	return m
 }
@@ -595,7 +600,7 @@ func (m *Model) withField(options ...Option[*field]) *Model {
 		value:    new(FilePath),
 		validate: func(FilePath) error { return nil },
 		filter:   textinput.New(),
-	}).With(options...)
+	}).With(options...).(*field)
 	return m
 }
 
