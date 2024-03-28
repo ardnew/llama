@@ -17,7 +17,6 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/mattn/go-runewidth"
 	"github.com/sahilm/fuzzy"
 )
 
@@ -30,7 +29,6 @@ const separator = "    " // Separator between columns.
 var (
 	fileSeparator = string(filepath.Separator)
 	showIcons     = false
-	strlen        = runewidth.StringWidth
 )
 
 type Model struct {
@@ -38,7 +36,7 @@ type Model struct {
 	files             []fs.DirEntry       // Files we are looking at.
 	err               error               // Error while listing files.
 	field             *field              // Bubble Tea Huh form field.
-	keys              *KeyMap             // Key bindings.
+	keys              *keyMap             // Key bindings.
 	st                *Styles             // Rendering attributes.
 	cmdline           []string            // Command line to open files.
 	c, r              int                 // Selector position in columns and rows.
@@ -118,7 +116,7 @@ func Style(styles *Styles) Option[*Model] {
 }
 
 // Keys returns an Option that sets the key bindings for a Model.
-func Keys(keys *KeyMap) Option[*Model] {
+func Keys(keys *keyMap) Option[*Model] {
 	return func(m *Model) *Model { return m.WithKeys(keys) }
 }
 
@@ -177,7 +175,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			} else if key.Matches(msg, m.keys.Back) {
 				if len(m.search) > 0 {
-					m.search = m.search[:strlen(m.search)-1]
+					m.search = m.search[:len(m.search)-1]
 					return m, nil
 				}
 			} else if msg.Type == tea.KeyRunes {
@@ -206,13 +204,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch {
 		case key.Matches(msg, m.keys.ForceQuit):
-			_, _ = fmt.Fprintln(os.Stderr) // Keep last item visible after prompt.
+			// _, _ = fmt.Fprintln(os.Stderr) // Keep last item visible after prompt.
 			m.status = 2
 			m.dontDoPendingDeletions()
 			return m, tea.Quit
 
 		case key.Matches(msg, m.keys.Quit, m.keys.QuitQ):
-			_, _ = fmt.Fprintln(os.Stderr) // Keep last item visible after prompt.
+			// _, _ = fmt.Fprintln(os.Stderr) // Keep last item visible after prompt.
 			fmt.Println(m.path) // Write to cd.
 			m.status = 0
 			m.performPendingDeletions()
@@ -423,7 +421,7 @@ func (m *Model) View() string {
 	m.preview()
 
 	// Get output rows width before coloring.
-	outputWidth := strlen(path.Base(m.path)) // Use current dir name as default.
+	outputWidth := len(path.Base(m.path)) // Use current dir name as default.
 	if m.previewMode {
 		row := make([]string, m.columns)
 		for i := 0; i < m.columns; i++ {
@@ -433,7 +431,7 @@ func (m *Model) View() string {
 				outputWidth = width
 			}
 		}
-		outputWidth = max(outputWidth, strlen(Join(row, separator)))
+		outputWidth = max(outputWidth, len(Join(row, separator)))
 	} else {
 		outputWidth = width
 	}
@@ -480,9 +478,9 @@ func (m *Model) View() string {
 		location = TrimSuffix(location, fileSeparator)
 		filter = fileSeparator + m.search
 	}
-	barLen := strlen(location) + strlen(filter)
+	barLen := len(location) + len(filter)
 	if barLen > outputWidth {
-		location = location[min(barLen-outputWidth, strlen(location)):]
+		location = location[min(barLen-outputWidth, len(location)):]
 	}
 	barStr := m.st.Bar.Render(location) + m.st.Search.Render(filter)
 
@@ -553,6 +551,11 @@ func (m *Model) WithSize(width, height int) *Model {
 	return m
 }
 
+// Size returns the width and height of the receiver.
+func (m *Model) Size() (width, height int) {
+	return m.width, m.height
+}
+
 // WithIcons returns the receiver with file type icons enabled.
 func (m *Model) WithIcons() *Model {
 	showIcons = true
@@ -573,7 +576,7 @@ func (m *Model) WithStyle(styles *Styles) *Model {
 }
 
 // WithKeys returns the receiver with the given key bindings set.
-func (m *Model) WithKeys(keys *KeyMap) *Model {
+func (m *Model) WithKeys(keys *keyMap) *Model {
 	m.keys = keys
 	return m
 }
@@ -597,7 +600,7 @@ func (m *Model) withField(options ...Option[*field]) *Model {
 		value:    new(FilePath),
 		validate: func(FilePath) error { return nil },
 		filter:   textinput.New(),
-	}).With(options...)
+	}).With(options...).(*field)
 	return m
 }
 

@@ -34,51 +34,73 @@ type field struct {
 	theme      *huh.Theme
 }
 
-// Theme(theme *huh.Theme) huh.Field
-// Accessible(accessible bool) huh.Field
-// KeyMap(keys *huh.KeyMap) huh.Field
-// Width(width int) huh.Field
+// Theme returns an Option that sets the theme of a field.
+func Theme(theme *huh.Theme) Option[*field] {
+	return func(f *field) *field { return f.WithTheme(theme).(*field) }
+}
+
+// Accessible returns an Option that sets the accessibility flag of a field.
+func Accessible(accessible bool) Option[*field] {
+	return func(f *field) *field { return f.WithAccessible(accessible).(*field) }
+}
+
+// KeyMap returns an Option that sets the key bindings of a field.
+func KeyMap(keys *huh.KeyMap) Option[*field] {
+	return func(f *field) *field { return f.WithKeyMap(keys).(*field) }
+}
+
+// Width returns an Option that sets the width of a field.
+func Width(width int) Option[*field] {
+	return func(f *field) *field { return f.WithWidth(width).(*field) }
+}
+
+// Height returns an Option that sets the height of a field.
+func Height(height int) Option[*field] {
+	return func(f *field) *field { return f.WithHeight(height).(*field) }
+}
 
 // Value returns an Option that sets the value of a field.
 func Value(value string) Option[*field] {
-	return func(f *field) *field { return f.WithValue(value) }
+	return func(f *field) *field { return f.WithValue(value).(*field) }
 }
 
 // Key returns an Option that sets the key of a field.
 func Key(key string) Option[*field] {
-	return func(f *field) *field { return f.WithKey(key) }
+	return func(f *field) *field { return f.WithKey(key).(*field) }
 }
 
 // Heading returns an Option that sets the heading of a field.
 func Heading(heading string) Option[*field] {
-	return func(f *field) *field { return f.WithHeading(heading) }
+	return func(f *field) *field { return f.WithHeading(heading).(*field) }
 }
 
 // Caption returns an Option that sets the caption of a field.
 func Caption(caption string) Option[*field] {
-	return func(f *field) *field { return f.WithCaption(caption) }
+	return func(f *field) *field { return f.WithCaption(caption).(*field) }
 }
 
 // Validate returns an Option that sets the validation function of a field.
 func Validate(validate func(FilePath) error) Option[*field] {
-	return func(f *field) *field { return f.WithValidate(validate) }
+	return func(f *field) *field { return f.WithValidate(validate).(*field) }
 }
 
 // Prompt returns an Option that sets the prompt of a field.
 func Prompt(prompt string) Option[*field] {
-	return func(f *field) *field { return f.WithPrompt(prompt) }
+	return func(f *field) *field { return f.WithPrompt(prompt).(*field) }
 }
 
-// Init initializes the field.
+// Init initializes the internal state of a field.
 func (f *field) Init() tea.Cmd {
 	return f.Model.Init()
 }
 
+// Update processes and manages the internal state of a field.
 func (f *field) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, cmd := f.Model.Update(msg)
 	return f, cmd
 }
 
+// View renders the field according to its internal state.
 func (f *field) View() string {
 	return f.Model.View()
 }
@@ -94,6 +116,16 @@ func (f *field) Blur() tea.Cmd {
 func (f *field) Focus() tea.Cmd {
 	f.isFocused = true
 	return nil
+}
+
+// Skip returns whether the textarea should be skipped or should be blocking.
+func (f *field) Skip() bool {
+	return false
+}
+
+// Zoom returns whether the note should be zoomed.
+func (f *field) Zoom() bool {
+	return false
 }
 
 // Error returns the error of the field.
@@ -114,8 +146,13 @@ func (f *field) KeyBinds() []key.Binding {
 	return []key.Binding{} // f.keys.bindings()
 }
 
+// HelpKeyBinds returns the help keybindings for the field.
+func (f *field) HelpKeyBinds(huh.HelpFormat) []key.Binding {
+	return []key.Binding{}
+}
+
 // With returns the receiver with the given options applied.
-func (f *field) With(options ...Option[*field]) *field {
+func (f *field) With(options ...Option[*field]) huh.Field {
 	for _, option := range options {
 		f = option(f)
 	}
@@ -154,11 +191,6 @@ func (f *field) WithHeight(height int) huh.Field {
 	return f
 }
 
-// WithPosition sets the position of the field.
-// func (f *field) WithPosition(p huh.FieldPosition) huh.Field {
-// 	return f
-// }
-
 // GetKey returns the key of the field.
 func (f *field) GetKey() string {
 	return f.key
@@ -170,39 +202,47 @@ func (f *field) GetValue() any {
 }
 
 // WithValue sets the value of the field.
-func (f *field) WithValue(value string) *field {
+func (f *field) WithValue(value string) huh.Field {
 	f.value = f.value.init(value)
 	return f
 }
 
 // WithKey sets the key of the field.
-func (f *field) WithKey(key string) *field {
+func (f *field) WithKey(key string) huh.Field {
 	f.key = key
 	return f
 }
 
 // WithHeading sets the heading of the field.
-func (f *field) WithHeading(heading string) *field {
+func (f *field) WithHeading(heading string) huh.Field {
 	f.heading = heading
 	return f
 }
 
 // WithCaption sets the caption of the field.
-func (f *field) WithCaption(caption string) *field {
+func (f *field) WithCaption(caption string) huh.Field {
 	f.caption = caption
 	return f
 }
 
 // WithValidate sets the validation function of the field.
-func (f *field) WithValidate(validate func(FilePath) error) *field {
+func (f *field) WithValidate(validate func(FilePath) error) huh.Field {
 	f.validate = validate
 	return f
 }
 
 // WithPrompt sets the prompt of the field.
-func (f *field) WithPrompt(prompt string) *field {
+func (f *field) WithPrompt(prompt string) huh.Field {
 	f.filter.Prompt = prompt
 	return f
+}
+
+// WithPosition sets the position information of the text field.
+func (f *field) WithPosition(p huh.FieldPosition) huh.Field {
+        f.keys.Prev.SetEnabled(!p.IsFirst())
+        f.keys.Next.SetEnabled(!p.IsLast())
+        f.keys.Submit.SetEnabled(p.IsLast())
+        return f
 }
 
 func (f *field) runAccessible() error {

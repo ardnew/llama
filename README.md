@@ -8,7 +8,7 @@ To use the `walk` component, install the module using:
 go get github.com/ardnew/walk/v2
 ```
 
-The original `walk` command has been refactored into the [cmd/lk](cmd/lk) submodule ([README.md](cmd/lk/README.md)) and can be installed using:
+The original `walk` command has been refactored into the [cmd/lk] submodule ([README.md](cmd/lk/README.md)) and can be installed using:
 
 ```
 go get github.com/ardnew/walk/v2/cmd/lk
